@@ -1,0 +1,11 @@
+{{- if and .Values.route.enabled .Values.oauthProxy.enabled }}
+# Publishes the dashboard through the OAuth proxy. Re-encrypt: router terminates browser TLS, then re-encrypts
+# to the proxy's service-ca certificate.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: flyops-dashboard, namespace: {{ .Release.Namespace }}}
+spec:
+  to: {kind: Service, name: flyops-dashboard}
+  port: {targetPort: https}
+  tls: {termination: reencrypt, insecureEdgeTerminationPolicy: Redirect}
+{{- end }}

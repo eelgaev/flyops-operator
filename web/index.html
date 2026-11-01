@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlyOps Brain</title>
+<style>
+:root{--bg:#f4f5f7;--panel:#fff;--ink:#1c2230;--mut:#667085;--line:#d9dde5;--accent:#c2410c;--ok:#15803d;--warn:#b45309}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0b0e14;--panel:#131825;--ink:#e6e9f0;--mut:#8b94a7;--line:#252c3d;--accent:#fb923c;--ok:#4ade80;--warn:#fbbf24}}
+:root[data-theme=dark]{--bg:#0b0e14;--panel:#131825;--ink:#e6e9f0;--mut:#8b94a7;--line:#252c3d;--accent:#fb923c;--ok:#4ade80;--warn:#fbbf24}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+header{padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0}.tag{color:var(--mut)}
+.banner{background:var(--panel);border-left:3px solid var(--warn);padding:6px 12px;margin:12px 16px 0;color:var(--mut);font-size:12.5px}
+main{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);gap:12px;padding:12px 16px}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}
+.card h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:0 0 8px}
+canvas{width:100%;height:auto;aspect-ratio:4/3;display:block;border-radius:6px;background:#05070c}
+.row{display:grid;grid-template-columns:150px 1fr 40px;gap:8px;align-items:center;margin:3px 0;font-size:12.5px}
+.row span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;width:0;transition:width .6s}
+.num{text-align:right;color:var(--mut);font-variant-numeric:tabular-nums}
+.big{font-size:20px;font-weight:600}.pill{display:inline-block;padding:1px 8px;border-radius:10px;border:1px solid var(--line);font-size:12px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}
+ul{list-style:none;margin:0;padding:0;max-height:200px;overflow:auto}li{padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+select,button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.stack{display:grid;gap:12px;align-content:start}
+</style>
+</head>
+<body>
+<header>
+  <h1>🪰 FlyOps</h1><span class="tag"><b>The best OpenShift operator.</b> The cluster is now managed by a fruit fly.</span>
+  <span style="flex:1"></span>
+  <button id="theme" aria-label="Toggle theme">◐</button>
+</header>
+<div class="banner">Experimental connectome controller — not a validated autonomous operator. The neuron layout below is a <b>schematic</b>, not real connectome coordinates; sensory channels and population mappings are project-defined.</div>
+<main>
+  <section class="card">
+    <h2>Neural activity <span id="live" class="tag"></span></h2>
+    <canvas id="cv" width="960" height="720"></canvas>
+    <div class="tag" id="legend" style="margin-top:6px;font-size:12px"></div>
+  </section>
+  <div class="stack">
+    <section class="card"><h2>Decision</h2>
+      <div class="big" id="resp">–</div>
+      <div>switch: <span class="pill" id="mode">–</span> &nbsp; safety: <span class="pill" id="safety">–</span></div>
+      <div class="tag" id="meta" style="margin-top:6px;font-size:12px"></div>
+      <div class="warn" id="err"></div>
+    </section>
+    <section class="card"><h2>Cluster signals → sensory channels</h2><div id="signals"></div></section>
+    <section class="card"><h2>Population activity</h2><div id="pops"></div></section>
+    <section class="card"><h2>Recent decisions</h2><ul id="hist"></ul></section>
+  </div>
+</main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const COLORS={"example-descending-population":"#ff5d5d","example-mushroom-body-population":"#c084fc","example-central-complex-population":"#38bdf8","example-antennal-lobe-population":"#4ade80","example-optic-lobe-population":"#facc15"};
+// Schematic regions (x,y in 0..1, radius) — layout only, no anatomical claim.
+const REGIONS={
+ "example-optic-lobe-population":[[.14,.45,.12],[.86,.45,.12]],
+ "example-mushroom-body-population":[[.36,.26,.09],[.64,.26,.09]],
+ "example-central-complex-population":[[.5,.45,.08]],
+ "example-antennal-lobe-population":[[.42,.76,.07],[.58,.76,.07]],
+ "example-descending-population":[[.5,.88,.06]],
+ "":[[.3,.45,.2],[.7,.45,.2],[.5,.6,.2]]};
+let seed=12345;const rnd=()=>(seed=(seed*1664525+1013904223)>>>0)/4294967296;
+const N=900,neurons=[],byPop={};
+(function build(){
+  const keys=Object.keys(REGIONS);
+  for(let i=0;i<N;i++){
+    const pop=keys[i%keys.length===keys.length-1&&i%3?keys.length-1:Math.floor(rnd()*keys.length)];
+    const regs=REGIONS[pop],r=regs[Math.floor(rnd()*regs.length)];
+    const a=rnd()*6.283,d=Math.sqrt(rnd())*r[2];
+    const n={x:r[0]+Math.cos(a)*d*1.0,y:r[1]+Math.sin(a)*d*0.85,pop,e:0,nb:[]};
+    neurons.push(n);(byPop[pop]=byPop[pop]||[]).push(n);
+  }
+  for(const n of neurons){ // 2-3 nearest neighbours
+    const ds=neurons.map(m=>[m,(m.x-n.x)**2+(m.y-n.y)**2]).filter(p=>p[0]!==n).sort((a,b)=>a[1]-b[1]).slice(0,3);
+    n.nb=ds.map(p=>p[0]);
+  }
+})();
+let S=null;
+const act=()=>{const o={};if(S)for(const [p,a] of S.populations)o[p]=a;return o};
+const cv=$("cv"),g=cv.getContext("2d");
+function frame(){
+  const W=cv.width,H=cv.height;g.clearRect(0,0,W,H);
+  const A=act(),pending=[];
+  for(const n of neurons){
+    const a=A[n.pop]||0, base=n.pop===""?0.0015:0.0008;
+    if(Math.random()<a*0.05+base)n.e=1;
+    if(n.e>0.85) for(const m of n.nb) if(Math.random()<0.22)pending.push(m);
+    n.e*=0.93;
+  }
+  for(const m of pending) m.e=Math.max(m.e,0.7);
+  g.lineWidth=1;
+  for(const n of neurons){ if(n.e<0.2)continue;
+    g.strokeStyle=(COLORS[n.pop]||"#9ca3af");g.globalAlpha=n.e*0.45;
+    for(const m of n.nb){g.beginPath();g.moveTo(n.x*W,n.y*H);g.lineTo(m.x*W,m.y*H);g.stroke();}
+  }
+  for(const n of neurons){
+    const c=COLORS[n.pop]||"#9ca3af";
+    g.globalAlpha=0.18+n.e*0.82;g.fillStyle=n.e>0.3?c:"#5b6478";
+    g.beginPath();g.arc(n.x*W,n.y*H,1.6+n.e*3.2,0,6.283);g.fill();
+    if(n.e>0.6){g.globalAlpha=(n.e-0.6)*0.5;g.beginPath();g.arc(n.x*W,n.y*H,9,0,6.283);g.fill();}
+  }
+  g.globalAlpha=1;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+const bar=(label,v,color)=>`<div class="row"><span title="${label}">${label}</span><span class="bar"><i style="width:${Math.round(v*100)}%;background:${color}"></i></span><span class="num">${v.toFixed(2)}</span></div>`;
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function render(){
+  if(!S){$("resp").textContent="No FlyBrain reporting yet";return}
+  $("resp").textContent=S.response||"no-op";
+  const sf=$("safety");sf.textContent=S.safety;sf.className="pill "+(S.safety==="allowed"?"warn":"");
+  const md=$("mode");md.textContent=S.switch;md.className="pill "+(S.switch==="ON"?"warn":"");
+  $("meta").textContent=`${S.demo?"demo data · ":""}brain ${S.backend} (${S.model}) · tick ${S.ticks} · ${S.counts.nodes} nodes, ${S.counts.pods} pods, ${S.counts.deployments} deployments, ${S.counts.jobs} jobs`;
+  $("err").textContent=S.error||"";
+  $("live").textContent="· updated "+new Date(S.updated_at).toLocaleTimeString();
+  $("signals").innerHTML=Object.entries(S.signals).map(([k,v])=>bar(k,v,"var(--accent)")).join("")+
+    (S.stimuli.length?`<div class="tag" style="margin-top:6px;font-size:12px">stimuli: ${S.stimuli.map(([c,i])=>esc(c)+" "+i.toFixed(2)).join(", ")}</div>`:"");
+  $("pops").innerHTML=S.populations.map(([p,a])=>bar(p.replace("example-","").replace("-population",""),a,COLORS[p]||"#999")).join("");
+  $("legend").innerHTML=Object.entries(COLORS).map(([p,c])=>`<span style="color:${c}">●</span> ${p.replace("example-","").replace("-population","")}`).join(" &nbsp; ");
+  $("hist").innerHTML=S.history.map(h=>`<li><b>${esc(h.response)}</b> <span class="tag">${new Date(h.time).toLocaleTimeString()} · ${esc(h.safety)}</span><br><span class="tag">${esc(h.detail)}</span>${h.outcome&&h.outcome!=="none"?`<br><span class="warn">${esc(h.outcome)}</span>`:""}</li>`).join("")||'<li class="tag">none yet</li>';
+}
+async function poll(){
+  try{
+    const r=await fetch("api/state",{cache:"no-store"}),j=await r.json();
+    S=j.brains[0]||null;render();
+  }catch(e){$("live").textContent="· disconnected"}
+}
+setInterval(poll,1000);poll();
+$("theme").onclick=()=>{const d=document.documentElement;const dark=getComputedStyle(d).getPropertyValue("--bg").trim()==="#0b0e14";d.dataset.theme=dark?"light":"dark"};
+</script>
+</body>
+</html>

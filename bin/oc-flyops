@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# oc flyops on | off | status
+# Put this file on your PATH; oc then runs it as `oc flyops`. (Also works as `kubectl flyops` if named kubectl-flyops.)
+#
+# OFF (default): the fly watches the cluster and thinks, and changes nothing.
+# ON: the fly may delete broken pods, restart broken workloads and drain broken nodes anywhere in the cluster.
+set -euo pipefail
+OC="${OC:-oc}"
+command -v "$OC" >/dev/null 2>&1 || OC=kubectl
+
+switch() {
+  "$OC" patch flybrain flyops --type=merge -p "{\"spec\":{\"enabled\":$1}}" >/dev/null
+  # the operator applies the switch on its next tick (every 5 s)
+  local want; want=$([[ $1 == true ]] && echo ON || echo OFF)
+  for _ in $(seq 1 15); do
+    [[ "$("$OC" get flybrain flyops -o jsonpath='{.status.switch}')" == "$want" ]] && { echo "flyops: $want"; return; }
+    sleep 1
+  done
+  echo "flyops: switch set to $want, but the operator has not confirmed it yet (is it running?)" >&2
+}
+
+case "${1:-status}" in
+  on) switch true ;;
+  off) switch false ;;
+  status) "$OC" get flybrain flyops ;;
+  *) echo "usage: oc flyops on | off | status" >&2; exit 1 ;;
+esac

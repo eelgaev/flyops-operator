@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flyops-controller
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1          # leader election is not implemented in v0.1: keep a single replica
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: flyops-controller}}
+  template:
+    metadata: {labels: {app: flyops-controller}}
+    spec:
+      serviceAccountName: flyops-controller
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.oauthProxy.enabled }}
+      initContainers:
+        # random cookie secret per pod start (single replica; sessions reset on restart)
+        - name: cookie-secret
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: [sh, -c, "head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32 > /secrets/session_secret"]
+          volumeMounts: [{name: proxy-secret, mountPath: /secrets}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      {{- end }}
+      containers:
+        - name: controller
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.oauthProxy.enabled }}
+          env: [{name: FLYOPS_BIND, value: "127.0.0.1:18787"}, {name: POD_NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}]   # reachable only through the OAuth proxy
+          {{- else }}
+          # No OAuth proxy: the dashboard is served UNAUTHENTICATED on a ClusterIP Service. Reach it with port-forward.
+          env: [{name: FLYOPS_BIND, value: "0.0.0.0:18787"}, {name: POD_NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}]
+          ports: [{name: http, containerPort: 18787}]
+          readinessProbe: {httpGet: {path: /readyz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          {{- end }}
+          resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {memory: 768Mi}}   # full connectome: ~180 MB, ~0.5 s CPU per tick
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+        {{- if .Values.oauthProxy.enabled }}
+        - name: oauth-proxy
+          image: {{ include "flyops.oauthProxyImage" . | quote }}
+          args:
+            - --provider=openshift
+            - --https-address=:18443
+            - --http-address=
+            - --upstream=http://127.0.0.1:18787
+            - --openshift-service-account=flyops-controller
+            - --tls-cert=/etc/tls/private/tls.crt
+            - --tls-key=/etc/tls/private/tls.key
+            - --cookie-secret-file=/etc/proxy/secrets/session_secret
+            - --skip-auth-regex=^/(healthz|readyz)$
+            # only users who can `get` the dashboard Service in this namespace may log in
+            - '--openshift-sar={"namespace":"{{ .Release.Namespace }}","resource":"services","resourceName":"flyops-dashboard","verb":"get"}'
+          ports: [{name: https, containerPort: 18443}]
+          readinessProbe: {httpGet: {path: /readyz, port: https, scheme: HTTPS}}
+          livenessProbe: {httpGet: {path: /healthz, port: https, scheme: HTTPS}}
+          resources: {requests: {cpu: 10m, memory: 32Mi}}
+          volumeMounts:
+            - {name: proxy-tls, mountPath: /etc/tls/private, readOnly: true}
+            - {name: proxy-secret, mountPath: /etc/proxy/secrets, readOnly: true}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+        {{- end }}
+      {{- if .Values.oauthProxy.enabled }}
+      volumes:
+        - name: proxy-tls
+          secret: {secretName: flyops-proxy-tls}      # issued by the service-ca operator (see Service annotation)
+        - name: proxy-secret
+          emptyDir: {medium: Memory}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flyops-dashboard
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.oauthProxy.enabled }}
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: flyops-proxy-tls
+  {{- end }}
+spec:
+  selector: {app: flyops-controller}
+  {{- if .Values.oauthProxy.enabled }}
+  ports: [{name: https, port: 18443, targetPort: https}]
+  {{- else }}
+  ports: [{name: http, port: 18787, targetPort: http}]
+  {{- end }}

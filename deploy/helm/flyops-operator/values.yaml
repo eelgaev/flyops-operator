@@ -1,0 +1,15 @@
+image:
+  repository: quay.io/eelgaev/flyops   # linux/amd64
+  tag: "0.2.0"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Dashboard login through OpenShift OAuth. Set enabled=false on plain Kubernetes (the dashboard then has no
+# authentication; reach it with port-forward only).
+oauthProxy:
+  enabled: true
+  # Empty: use the cluster's own oauth-proxy (ImageStream openshift/oauth-proxy). Set only to force an image.
+  image: ""
+  fallbackImage: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9:v4.16   # only if that lookup finds nothing
+
+route: {enabled: true}   # OpenShift Route for the dashboard; false on plain Kubernetes

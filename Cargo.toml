@@ -1,0 +1,33 @@
+[package]
+name = "flyops"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "OpenShift operator run by a simulated fruit-fly brain (FlyWire connectome)"
+repository = "https://github.com/eelgaev/flyops-operator"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+csv = "1"
+flate2 = "1"
+futures = "0.3"
+k8s-openapi = { version = "0.28.0", features = ["latest"] }
+kube = { version = "4.2.0", default-features = false, features = ["client", "runtime", "derive", "rustls-tls", "ring"] }
+parquet = { version = "60", default-features = false, features = ["brotli"] }
+prometheus = "0.14"
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[profile.release]
+lto = "thin"

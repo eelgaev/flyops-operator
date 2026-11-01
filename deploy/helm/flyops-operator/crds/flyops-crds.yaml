@@ -1,0 +1,140 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: flybrains.neuroscience.flyops.io
+spec:
+  group: neuroscience.flyops.io
+  names:
+    kind: FlyBrain
+    plural: flybrains
+    shortNames:
+    - fb
+    singular: flybrain
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.switch
+      name: Switch
+      type: string
+    - jsonPath: .status.lastResponse
+      name: Last Response
+      type: string
+    - jsonPath: .status.lastAction
+      name: Last Action
+      type: string
+    - jsonPath: .status.lastSimulationTime
+      name: Last Simulation
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for FlyBrainSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              enabled:
+                default: false
+                description: |-
+                  The switch. false (default): the fly watches and thinks, and changes nothing.
+                  true: the fly may delete broken pods, restart broken workloads and drain broken nodes anywhere in the cluster.
+                type: boolean
+            type: object
+          status:
+            nullable: true
+            properties:
+              lastAction:
+                description: What the fly last did to the cluster.
+                nullable: true
+                type: string
+              lastResponse:
+                nullable: true
+                type: string
+              lastSimulationTime:
+                nullable: true
+                type: string
+              message:
+                description: Set when the brain cannot run (e.g. the connectome failed to load).
+                nullable: true
+                type: string
+              switch:
+                description: ON or OFF, as the operator last applied it.
+                nullable: true
+                type: string
+            type: object
+        required:
+        - spec
+        title: FlyBrain
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: flydecisions.neuroscience.flyops.io
+spec:
+  group: neuroscience.flyops.io
+  names:
+    kind: FlyDecision
+    plural: flydecisions
+    shortNames:
+    - fd
+    singular: flydecision
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.action
+      name: Action
+      type: string
+    - jsonPath: .spec.result
+      name: Result
+      type: string
+    - jsonPath: .spec.timestamp
+      name: Time
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for FlyDecisionSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              action:
+                description: delete-pod | restart-workload | drain-node
+                type: string
+              neuralActivity:
+                default: []
+                description: Strongest readout populations at the time (name, activity 0..1).
+                items:
+                  properties:
+                    activity:
+                      format: float
+                      type: number
+                    population:
+                      type: string
+                  required:
+                  - activity
+                  - population
+                  type: object
+                type: array
+              result:
+                description: What was done, to what, or why nothing was.
+                type: string
+              timestamp:
+                type: string
+            required:
+            - action
+            - result
+            - timestamp
+            type: object
+        required:
+        - spec
+        title: FlyDecision
+        type: object
+    served: true
+    storage: true
+

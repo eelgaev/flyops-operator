@@ -1,0 +1,10 @@
+apiVersion: v2
+name: flyops-operator
+description: OpenShift operator run by a simulated fruit-fly brain (FlyWire, 138,639 neurons). One switch, OFF by default.
+type: application
+version: 0.2.0
+appVersion: "0.2.0"
+home: https://github.com/eelgaev/flyops-operator
+sources:
+  - https://github.com/eelgaev/flyops-operator
+keywords: [openshift, operator, connectome, drosophila, flywire]

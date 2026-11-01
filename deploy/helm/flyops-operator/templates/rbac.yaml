@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flyops-controller
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    # lets the oauth-proxy sidecar use this SA as its OAuth client; redirects only to the dashboard Route
+    serviceaccounts.openshift.io/oauth-redirectreference.dashboard: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"flyops-dashboard"}}'
+---
+# Everything the fly can see and do, cluster-wide. It only acts while its switch is ON
+# (oc flyops on), and never inside its own namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flyops
+rules:
+  # see the cluster
+  - apiGroups: [""]
+    resources: [nodes, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch]
+  # act on it (only while the switch is ON; enforced in code)
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [patch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [patch]
+  # its own switch, audit records and Events
+  - apiGroups: [neuroscience.flyops.io]
+    resources: [flybrains]
+    verbs: [get, list, watch, create]
+  - apiGroups: [neuroscience.flyops.io]
+    resources: [flybrains/status]
+    verbs: [get, patch, update]
+  - apiGroups: [neuroscience.flyops.io]
+    resources: [flydecisions]
+    verbs: [get, list, create, delete]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flyops
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: flyops}
+subjects: [{kind: ServiceAccount, name: flyops-controller, namespace: {{ .Release.Namespace }}}]
